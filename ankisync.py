@@ -8,10 +8,6 @@ import cozmo
 import anki_vector
 import asyncio
 
-# ==============================================================================
-# --- PYTHON 3.10+ COMPATIBILITY PATCH FOR COZMO SDK ---
-# ==============================================================================
-
 _orig_gather = asyncio.gather
 def _patched_gather(*args, **kwargs):
     kwargs.pop('loop', None)
@@ -36,10 +32,6 @@ def _patched_wait_for(*args, **kwargs):
     return _orig_wait_for(*args, **kwargs)
 asyncio.wait_for = _patched_wait_for
 
-# ==============================================================================
-
-
-# --- Custom RGB colors for Cozmo ---
 cozmo_magenta = cozmo.lights.Light(cozmo.lights.Color(rgb=(255, 0, 255)))
 cozmo_cyan = cozmo.lights.Light(cozmo.lights.Color(rgb=(0, 255, 255)))
 
@@ -61,22 +53,20 @@ VECTOR_COLORS = [
 
 SONG_PATH = "song.flac"
 
-# The thread-safe communication channel between the two robots
 vector_command_queue = queue.Queue()
 
-# A set of distinct choreography moves
 DANCE_MOVES = [
-    "step_left",   # Fast pivot left, thrust arms up
-    "step_right",  # Fast pivot right, thrust arms down
-    "head_bop",    # Lunge forward, head down
-    "back_it_up"   # Revert backward, head up
+    "step_left",   
+    "step_right", 
+    "head_bop",  
+    "back_it_up"
 ]
 
 def vector_worker():
     """Runs completely isolated in a background thread."""
     try:
         with anki_vector.Robot() as vec_robot:
-            print("✅ Vector connected and standing by!")
+            print("✅ Vector connected!")
             
             if vec_robot.status.is_on_charger:
                 print("  - Vector is on his charger! Driving off so he can move...")
@@ -88,7 +78,7 @@ def vector_worker():
                 if vec_cube:
                     print("  - Vector cube found and synced.")
                 else:
-                    print("  - Vector cube not found. (Make sure it has a battery!)")
+                    print("  - Vector cube not found. (Make sure it has a battery)")
             except Exception as e:
                 print(f"  - Vector cube warning: {e}")
                 vec_cube = None
@@ -100,12 +90,12 @@ def vector_worker():
                     break
                     
                 elif cmd["action"] == "stop":
-                    # Flicker Prevention: If a new beat is already queued, skip stopping!
+                    #If a new beat is already queued, skip stopping
                     if not vector_command_queue.empty():
                         continue 
                         
                     try:
-                        # Only stop motors if it's safe (preventing SDK thread lockups)
+                        # Only stop motors if it's safe
                         if not vec_robot.status.is_picked_up and not vec_robot.status.is_cliff_detected:
                             vec_robot.motors.set_wheel_motors(0, 0)
                             vec_robot.motors.set_lift_motor(0)
@@ -120,7 +110,7 @@ def vector_worker():
                     color_idx = cmd["color"]
                     
                     try:
-                        # Smart Bypassing: Skip motors if picked up or on a cliff to prevent thread freezing
+                        # Skip motors if picked up or on a cliff to prevent thread freezing
                         is_safe = not vec_robot.status.is_picked_up and not vec_robot.status.is_cliff_detected
                         
                         if is_safe:
@@ -137,7 +127,7 @@ def vector_worker():
                                 vec_robot.motors.set_wheel_motors(-150, -150)
                                 vec_robot.motors.set_head_motor(5.0)
                                 
-                        # Always flash the cube regardless of cliffs/picked up status!
+                        # Always flash the cube regardless of cliffs/picked up status
                         if vec_cube:
                             vec_cube.set_lights(VECTOR_COLORS[color_idx])
                     except Exception:
@@ -159,9 +149,9 @@ def main_dance_loop(coz_robot: cozmo.robot.Robot):
     print("\n🔍 Looking for Cozmo's cubes...")
     coz_cubes = list(coz_robot.world.light_cubes.values())
     if coz_cubes:
-        print(f"  - {len(coz_cubes)} Cozmo cube(s) found and synced.")
+        print(f"  - {len(coz_cubes)} Cozmo cubes) found and synced.")
     else:
-        print("  - No Cozmo cubes found. (Tap them to wake them up!)")
+        print("  - No Cozmo cubes found.")
 
     print("\n🎵 Analyzing FLAC audio for beats... (This may take a moment)")
     try:
@@ -208,22 +198,18 @@ def main_dance_loop(coz_robot: cozmo.robot.Robot):
         # Generate choreo
         move_type = DANCE_MOVES[i % len(DANCE_MOVES)] 
         
-        # --- THE ANTI-SPAM FLUSH ---
-        # If Vector's thread got delayed, empty the queue so he instantly catches up instead of spamming old beats
         while not vector_command_queue.empty():
             try:
                 vector_command_queue.get_nowait()
             except queue.Empty:
                 break
-        
-        # 1. Command Vector instantly
+                
         vector_command_queue.put({
             "action": "move", 
             "type": move_type, 
             "color": random.randint(0, len(VECTOR_COLORS) - 1)
         })
-
-        # 2. Command Cozmo instantly
+        
         try:
             if move_type == "step_left":
                 coz_robot.drive_wheels(-200, 200)
@@ -243,7 +229,7 @@ def main_dance_loop(coz_robot: cozmo.robot.Robot):
         except Exception:
             pass
 
-        # 3. Stop both robots cleanly based on the dynamic duration
+        # Stop both robots based on the dynamic duration
         def stop_bots():
             vector_command_queue.put({"action": "stop"})
             try:
@@ -260,7 +246,7 @@ def main_dance_loop(coz_robot: cozmo.robot.Robot):
     while pygame.mixer.music.get_busy():
         time.sleep(1)
 
-    print("\nParty's over. Shutting down gracefully.")
+    print("\nParty's over.")
     vector_command_queue.put({"action": "quit"})
     time.sleep(1)
 
